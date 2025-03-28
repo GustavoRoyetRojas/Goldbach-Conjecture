@@ -1,0 +1,114 @@
+import time
+import random
+import sys
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+
+
+def miller_rabin(n, k=40):
+    """Miller-Rabin primality test with k rounds."""
+    if n < 2:
+        return False
+    if n == 2 or n == 3:
+        return True
+    if n % 2 == 0:
+        return False
+
+    d = n - 1
+    s = 0
+    while d % 2 == 0:
+        d //= 2
+        s += 1
+
+    for _ in range(k):
+        a = random.randrange(2, min(n - 2, sys.maxsize))
+        x = pow(a, d, n)
+        if x == 1 or x == n - 1:
+            continue
+        for _ in range(s - 1):
+            x = (x * x) % n
+            if x == n - 1:
+                break
+        else:
+            return False
+    return True
+
+
+def encontrar_pq_optimo_dual(M, timeout=300, max_checks=100000000, step=1000):
+    """Find primes P and Q such that P + Q = M (two threads, larger steps)."""
+    if M % 2 != 0 or M <= 2:
+        raise ValueError("M must be even and greater than 2")
+
+    mid = M // 2
+    thread_start_time = time.time()
+    checks_counter = [0]
+
+    def search_downward():
+        offset = 1 if mid % 2 == 0 else 0
+        while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
+            p = mid - offset
+            checks_counter[0] += 1
+            if p < 2:
+                return None
+            if miller_rabin(p):
+                q = M - p
+                if q > p and miller_rabin(q):
+                    return (p, q)
+            offset += step  # Larger step size
+            if offset % 2 == 0:  # Ensure odd numbers
+                offset += 1
+        return None
+
+    def search_upward():
+        offset = 1 if mid % 2 == 0 else 0
+        while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
+            p = mid + offset
+            checks_counter[0] += 1
+            if p >= M:
+                return None
+            if miller_rabin(p):
+                q = M - p
+                if q > 0 and miller_rabin(q):
+                    return (q, p)
+            offset += step  # Larger step size
+            if offset % 2 == 0:  # Ensure odd numbers
+                offset += 1
+        return None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_down = executor.submit(search_downward)
+        future_up = executor.submit(search_upward)
+
+        done, not_done = concurrent.futures.wait(
+            [future_down, future_up],
+            return_when=concurrent.futures.FIRST_COMPLETED
+        )
+
+        for future in done:
+            result = future.result()
+            if result:
+                for f in not_done:
+                    f.cancel()
+                return result, checks_counter[0]
+
+    return None, checks_counter[0]
+
+
+# Test with 10^1000
+M = 10 ** 1000
+print(f"Procesando M = {M:,}")
+
+start_time = time.time()
+resultado, checks = encontrar_pq_optimo_dual(M, timeout=300, max_checks=100000000, step=1000)
+end_time = time.time()
+
+if resultado is not None:
+    p, q = resultado
+    print(f"Encontrado: P = {p:,}, Q = {q:,}")
+    print(f"Verificación: {p} + {q} = {p + q:,}")
+    print(f"Números revisados: {checks:,}")
+else:
+    print("No se encontraron primos P y Q tales que P + Q = M en el tiempo límite.")
+    print(f"Números revisados: {checks:,}")
+
+print(f"Tiempo de ejecución: {end_time - start_time:.2f} segundos")
