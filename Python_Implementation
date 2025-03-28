@@ -5,7 +5,7 @@ import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 
 
-def miller_rabin(n, k=20):
+def miller_rabin(n, k=40):
     """Miller-Rabin primality test with k rounds."""
     if n < 2:
         return False
@@ -34,7 +34,7 @@ def miller_rabin(n, k=20):
     return True
 
 
-def encontrar_pq_optimo_dual(M, timeout=60, max_checks=1000000):
+def encontrar_pq_optimo_dual(M, timeout=10, max_checks=1000000):
     """Find primes P and Q such that P + Q = M (two threads)."""
     if M % 2 != 0 or M <= 2:
         raise ValueError("M must be even and greater than 2")
@@ -42,41 +42,41 @@ def encontrar_pq_optimo_dual(M, timeout=60, max_checks=1000000):
     mid = M // 2
     start_time = time.time()
 
-    def search_downward():
+    def search_downward(checks_counter):
         offset = 1 if mid % 2 == 0 else 0
-        checks = 0
-        while time.time() - start_time < timeout and checks < max_checks:
+        while time.time() - start_time < timeout and checks_counter[0] < max_checks:
             p = mid - offset
+            checks_counter[0] += 1
             if p < 2:
                 return None
             if miller_rabin(p):
                 q = M - p
                 if q > p and miller_rabin(q):
-                    return (p, q)
+                    return (p, q, checks_counter[0])
             offset += 2
-            checks += 1
         return None
 
-    def search_upward():
+    def search_upward(checks_counter):
         offset = 1 if mid % 2 == 0 else 0
-        checks = 0
-        while time.time() - start_time < timeout and checks < max_checks:
+        while time.time() - start_time < timeout and checks_counter[0] < max_checks:
             p = mid + offset
+            checks_counter[0] += 1
             if p >= M:
                 return None
             if miller_rabin(p):
                 q = M - p
                 if q > 0 and miller_rabin(q):
-                    return (q, p)
+                    return (q, p, checks_counter[0])
             offset += 2
-            checks += 1
         return None
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_down = executor.submit(search_downward)
-        future_up = executor.submit(search_upward)
+    # Shared counter for total checks across threads
+    checks_counter = [0]
 
-        # Get first result that finishes
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_down = executor.submit(search_downward, checks_counter)
+        future_up = executor.submit(search_upward, checks_counter)
+
         done, not_done = concurrent.futures.wait(
             [future_down, future_up],
             return_when=concurrent.futures.FIRST_COMPLETED
@@ -85,26 +85,28 @@ def encontrar_pq_optimo_dual(M, timeout=60, max_checks=1000000):
         for future in done:
             result = future.result()
             if result:
-                # Cancel the other thread if we found a result
                 for f in not_done:
                     f.cancel()
-                return result
+                return result  # Returns (p, q, checks)
 
     return None
 
 
-# Test with large number
+# Test with astronomical number
 M = 4 * 10 ** 30
 print(f"Procesando M = {M:,}")
 
 start_time = time.time()
-resultado = encontrar_pq_optimo_dual(M, timeout=60)
+resultado = encontrar_pq_optimo_dual(M, timeout=10)
 end_time = time.time()
 
 if resultado:
-    print(f"Encontrado: P = {resultado[0]:,}, Q = {resultado[1]:,}")
-    print(f"Verificación: {resultado[0]} + {resultado[1]} = {resultado[0] + resultado[1]:,}")
+    p, q, checks = resultado
+    print(f"Encontrado: P = {p:,}, Q = {q:,}")
+    print(f"Verificación: {p} + {q} = {p + q:,}")
+    print(f"Números revisados: {checks:,}")
 else:
     print("No se encontraron primos P y Q tales que P + Q = M en el tiempo límite.")
+    print(f"Números revisados: {checks_counter[0]:,}")
 
 print(f"Tiempo de ejecución: {end_time - start_time:.2f} segundos")
