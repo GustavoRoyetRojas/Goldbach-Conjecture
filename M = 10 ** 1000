@@ -4,8 +4,7 @@ import sys
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 
-
-def miller_rabin(n, k=40):  # Increased k to 40 for higher confidence
+def miller_rabin(n, k=40):
     """Miller-Rabin primality test with k rounds."""
     if n < 2:
         return False
@@ -13,15 +12,15 @@ def miller_rabin(n, k=40):  # Increased k to 40 for higher confidence
         return True
     if n % 2 == 0:
         return False
-
+    
     d = n - 1
     s = 0
     while d % 2 == 0:
         d //= 2
         s += 1
-
+    
     for _ in range(k):
-        a = random.randrange(2, min(n - 2, sys.maxsize))
+        a = random.randrange(2, min(n-2, sys.maxsize))
         x = pow(a, d, n)
         if x == 1 or x == n - 1:
             continue
@@ -33,73 +32,98 @@ def miller_rabin(n, k=40):  # Increased k to 40 for higher confidence
             return False
     return True
 
-
 def encontrar_pq_optimo_boundary(M, timeout=1200, max_checks=100000000):
-    """Find primes P and Q such that P + Q = M (four threads at boundaries and midpoint)."""
+    """Find primes P and Q such that P + Q = M (four threads, storing primes)."""
     if M % 2 != 0 or M <= 2:
         raise ValueError("M must be even and greater than 2")
-
+    
     mid = M // 2
-    thread_start_time = time.time()
     checks_counter = [0]
-
-    def search_mid_down():  # From M/2 downward
-        p = mid - (1 if mid % 2 == 0 else 0)  # Start at nearest odd below mid
-        while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
+    primes_found = []  # Shared list to store primes
+    start_time = time.time()
+    
+    def search_mid_down():
+        p = mid - (1 if mid % 2 == 0 else 0)
+        while checks_counter[0] < max_checks:
             checks_counter[0] += 1
             if p < 2:
                 return None
             if miller_rabin(p):
                 q = M - p
+                primes_found.append(p)
                 if q > p and miller_rabin(q):
+                    print(f"Found by mid_down (direct): P={p}, Q={q} after {time.time() - start_time:.2f}s")
                     return (p, q)
-            p -= 2  # Decrement by 2 for odd numbers
+                # Check against all stored primes
+                for prime in primes_found:
+                    if prime != p and prime + p == M:
+                        print(f"Found by mid_down (cross-check): P={min(prime, p)}, Q={max(prime, p)} after {time.time() - start_time:.2f}s")
+                        return (min(prime, p), max(prime, p))
+            p -= 2
         return None
-
-    def search_mid_up():  # From M/2 upward
-        p = mid + (1 if mid % 2 == 0 else 0)  # Start at nearest odd above mid
-        while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
+    
+    def search_mid_up():
+        p = mid + (1 if mid % 2 == 0 else 0)
+        while checks_counter[0] < max_checks:
             checks_counter[0] += 1
             if p >= M:
                 return None
             if miller_rabin(p):
                 q = M - p
+                primes_found.append(p)
                 if q > 0 and q != p and miller_rabin(q):
+                    print(f"Found by mid_up (direct): P={q}, Q={p} after {time.time() - start_time:.2f}s")
                     return (q, p)
-            p += 2  # Increment by 2 for odd numbers
+                for prime in primes_found:
+                    if prime != p and prime + p == M:
+                        print(f"Found by mid_up (cross-check): P={min(prime, p)}, Q={max(prime, p)} after {time.time() - start_time:.2f}s")
+                        return (min(prime, p), max(prime, p))
+            p += 2
         return None
-
-    def search_from_max():  # From M downward
-        p = M - 1  # M is even, so M-1 is odd
-        while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
+    
+    def search_from_max():
+        p = M - 1
+        while checks_counter[0] < max_checks:
             checks_counter[0] += 1
             if p < 2:
                 return None
             if miller_rabin(p):
                 q = M - p
+                primes_found.append(p)
                 if q > 0 and q != p and miller_rabin(q):
+                    print(f"Found by max (direct): P={q}, Q={p} after {time.time() - start_time:.2f}s")
                     return (q, p)
-            p -= 2  # Decrement by 2 for odd numbers
+                for prime in primes_found:
+                    if prime != p and prime + p == M:
+                        print(f"Found by max (cross-check): P={min(prime, p)}, Q={max(prime, p)} after {time.time() - start_time:.2f}s")
+                        return (min(prime, p), max(prime, p))
+            p -= 2
         return None
-
-    def search_from_min():  # From 2 upward, ensuring 3 is checked
-        p = 2  # Start at 2
+    
+    def search_from_min():
+        p = 2
         first = True
-        while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
+        while checks_counter[0] < max_checks:
             checks_counter[0] += 1
             if p >= M:
                 return None
             if miller_rabin(p):
                 q = M - p
+                primes_found.append(p)
                 if q > p and miller_rabin(q):
+                    print(f"Found by min (direct): P={p}, Q={q} after {time.time() - start_time:.2f}s")
                     return (p, q)
-            if first:  # First step: go from 2 to 3
+                for prime in primes_found:
+                    if prime != p and prime + p == M:
+                        print(f"Found by min (cross-check): P={min(prime, p)}, Q={max(prime, p)} after {time.time() - start_time:.2f}s")
+                        return (min(prime, p), max(prime, p))
+            if first:
                 p = 3
                 first = False
-            else:  # Subsequent steps: increment by 2 for odd numbers
+            else:
                 p += 2
         return None
-
+    
     with ThreadPoolExecutor(max_workers=4) as executor:
         futures = [
             executor.submit(search_mid_down),
@@ -107,24 +131,26 @@ def encontrar_pq_optimo_boundary(M, timeout=1200, max_checks=100000000):
             executor.submit(search_from_max),
             executor.submit(search_from_min)
         ]
-
-        done, not_done = concurrent.futures.wait(
-            futures,
-            return_when=concurrent.futures.FIRST_COMPLETED
-        )
-
-        for future in done:
-            result = future.result()
-            if result:
-                for f in not_done:
-                    f.cancel()
-                return result, checks_counter[0]
-
+        
+        while time.time() - start_time < timeout:
+            done, not_done = concurrent.futures.wait(
+                futures,
+                timeout=1.0,
+                return_when=concurrent.futures.FIRST_COMPLETED
+            )
+            for future in done:
+                result = future.result()
+                if result:
+                    for f in not_done:
+                        f.cancel()
+                    return result, checks_counter[0]
+            if not not_done:
+                break
+    
     return None, checks_counter[0]
 
-
 # Test with 10^1000
-M = 10 ** 1000
+M = 10**1000
 print(f"Procesando M = {M:,}")
 
 start_time = time.time()
