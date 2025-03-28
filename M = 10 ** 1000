@@ -5,7 +5,7 @@ import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 
 
-def miller_rabin(n, k=40):
+def miller_rabin(n, k=40):  # Increased k to 40 for higher confidence
     """Miller-Rabin primality test with k rounds."""
     if n < 2:
         return False
@@ -34,8 +34,8 @@ def miller_rabin(n, k=40):
     return True
 
 
-def encontrar_pq_optimo_dual(M, timeout=300, max_checks=100000000, step=1000):
-    """Find primes P and Q such that P + Q = M (two threads, larger steps)."""
+def encontrar_pq_optimo_boundary(M, timeout=1200, max_checks=100000000):
+    """Find primes P and Q such that P + Q = M (four threads at boundaries and midpoint)."""
     if M % 2 != 0 or M <= 2:
         raise ValueError("M must be even and greater than 2")
 
@@ -43,10 +43,9 @@ def encontrar_pq_optimo_dual(M, timeout=300, max_checks=100000000, step=1000):
     thread_start_time = time.time()
     checks_counter = [0]
 
-    def search_downward():
-        offset = 1 if mid % 2 == 0 else 0
+    def search_mid_down():  # From M/2 downward
+        p = mid - (1 if mid % 2 == 0 else 0)  # Start at nearest odd below mid
         while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
-            p = mid - offset
             checks_counter[0] += 1
             if p < 2:
                 return None
@@ -54,33 +53,63 @@ def encontrar_pq_optimo_dual(M, timeout=300, max_checks=100000000, step=1000):
                 q = M - p
                 if q > p and miller_rabin(q):
                     return (p, q)
-            offset += step  # Larger step size
-            if offset % 2 == 0:  # Ensure odd numbers
-                offset += 1
+            p -= 2  # Decrement by 2 for odd numbers
         return None
 
-    def search_upward():
-        offset = 1 if mid % 2 == 0 else 0
+    def search_mid_up():  # From M/2 upward
+        p = mid + (1 if mid % 2 == 0 else 0)  # Start at nearest odd above mid
         while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
-            p = mid + offset
             checks_counter[0] += 1
             if p >= M:
                 return None
             if miller_rabin(p):
                 q = M - p
-                if q > 0 and miller_rabin(q):
+                if q > 0 and q != p and miller_rabin(q):
                     return (q, p)
-            offset += step  # Larger step size
-            if offset % 2 == 0:  # Ensure odd numbers
-                offset += 1
+            p += 2  # Increment by 2 for odd numbers
         return None
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future_down = executor.submit(search_downward)
-        future_up = executor.submit(search_upward)
+    def search_from_max():  # From M downward
+        p = M - 1  # M is even, so M-1 is odd
+        while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
+            checks_counter[0] += 1
+            if p < 2:
+                return None
+            if miller_rabin(p):
+                q = M - p
+                if q > 0 and q != p and miller_rabin(q):
+                    return (q, p)
+            p -= 2  # Decrement by 2 for odd numbers
+        return None
+
+    def search_from_min():  # From 2 upward, ensuring 3 is checked
+        p = 2  # Start at 2
+        first = True
+        while time.time() - thread_start_time < timeout and checks_counter[0] < max_checks:
+            checks_counter[0] += 1
+            if p >= M:
+                return None
+            if miller_rabin(p):
+                q = M - p
+                if q > p and miller_rabin(q):
+                    return (p, q)
+            if first:  # First step: go from 2 to 3
+                p = 3
+                first = False
+            else:  # Subsequent steps: increment by 2 for odd numbers
+                p += 2
+        return None
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(search_mid_down),
+            executor.submit(search_mid_up),
+            executor.submit(search_from_max),
+            executor.submit(search_from_min)
+        ]
 
         done, not_done = concurrent.futures.wait(
-            [future_down, future_up],
+            futures,
             return_when=concurrent.futures.FIRST_COMPLETED
         )
 
@@ -99,7 +128,7 @@ M = 10 ** 1000
 print(f"Procesando M = {M:,}")
 
 start_time = time.time()
-resultado, checks = encontrar_pq_optimo_dual(M, timeout=300, max_checks=100000000, step=1000)
+resultado, checks = encontrar_pq_optimo_boundary(M, timeout=1200, max_checks=100000000)
 end_time = time.time()
 
 if resultado is not None:
