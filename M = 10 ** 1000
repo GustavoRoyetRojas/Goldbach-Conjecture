@@ -33,137 +33,141 @@ def miller_rabin(n, k=40):
     return True
 
 def encontrar_pq_optimo_boundary(M, timeout=1200, max_checks=100000000):
-    """Find primes P and Q such that P + Q = M (four threads, storing primes)."""
+    """Find primes P and Q such that P + Q = M with 6 threads."""
     if M % 2 != 0 or M <= 2:
         raise ValueError("M must be even and greater than 2")
     
     mid = M // 2
-    checks_counter = [0]
-    primes_found = []  # Shared list to store primes
-    start_time = time.time()
+    total_checks = [0]
+    result = [None]  # Shared result to signal completion
+    
+    # Per-thread tracking
+    checks_by_thread = {'mid_down': 0, 'mid_up': 0, 'max': 0, 'min': 0}
+    primes_by_thread = {
+        'mid_down': [], 'mid_up': [], 'max': [], 'min': []
+    }
     
     def search_mid_down():
         p = mid - (1 if mid % 2 == 0 else 0)
-        while checks_counter[0] < max_checks:
-            checks_counter[0] += 1
+        while total_checks[0] < max_checks and not result[0]:
+            checks_by_thread['mid_down'] += 1
+            total_checks[0] += 1
             if p < 2:
-                return None
+                break
             if miller_rabin(p):
-                q = M - p
-                primes_found.append(p)
-                if q > p and miller_rabin(q):
-                    print(f"Found by mid_down (direct): P={p}, Q={q} after {time.time() - start_time:.2f}s")
-                    return (p, q)
-                # Check against all stored primes
-                for prime in primes_found:
-                    if prime != p and prime + p == M:
-                        print(f"Found by mid_down (cross-check): P={min(prime, p)}, Q={max(prime, p)} after {time.time() - start_time:.2f}s")
-                        return (min(prime, p), max(prime, p))
+                primes_by_thread['mid_down'].append(p)
             p -= 2
-        return None
     
     def search_mid_up():
         p = mid + (1 if mid % 2 == 0 else 0)
-        while checks_counter[0] < max_checks:
-            checks_counter[0] += 1
+        while total_checks[0] < max_checks and not result[0]:
+            checks_by_thread['mid_up'] += 1
+            total_checks[0] += 1
             if p >= M:
-                return None
+                break
             if miller_rabin(p):
-                q = M - p
-                primes_found.append(p)
-                if q > 0 and q != p and miller_rabin(q):
-                    print(f"Found by mid_up (direct): P={q}, Q={p} after {time.time() - start_time:.2f}s")
-                    return (q, p)
-                for prime in primes_found:
-                    if prime != p and prime + p == M:
-                        print(f"Found by mid_up (cross-check): P={min(prime, p)}, Q={max(prime, p)} after {time.time() - start_time:.2f}s")
-                        return (min(prime, p), max(prime, p))
+                primes_by_thread['mid_up'].append(p)
             p += 2
-        return None
     
     def search_from_max():
         p = M - 1
-        while checks_counter[0] < max_checks:
-            checks_counter[0] += 1
+        while total_checks[0] < max_checks and not result[0]:
+            checks_by_thread['max'] += 1
+            total_checks[0] += 1
             if p < 2:
-                return None
+                break
             if miller_rabin(p):
-                q = M - p
-                primes_found.append(p)
-                if q > 0 and q != p and miller_rabin(q):
-                    print(f"Found by max (direct): P={q}, Q={p} after {time.time() - start_time:.2f}s")
-                    return (q, p)
-                for prime in primes_found:
-                    if prime != p and prime + p == M:
-                        print(f"Found by max (cross-check): P={min(prime, p)}, Q={max(prime, p)} after {time.time() - start_time:.2f}s")
-                        return (min(prime, p), max(prime, p))
+                primes_by_thread['max'].append(p)
             p -= 2
-        return None
     
     def search_from_min():
         p = 2
         first = True
-        while checks_counter[0] < max_checks:
-            checks_counter[0] += 1
+        while total_checks[0] < max_checks and not result[0]:
+            checks_by_thread['min'] += 1
+            total_checks[0] += 1
             if p >= M:
-                return None
+                break
             if miller_rabin(p):
-                q = M - p
-                primes_found.append(p)
-                if q > p and miller_rabin(q):
-                    print(f"Found by min (direct): P={p}, Q={q} after {time.time() - start_time:.2f}s")
-                    return (p, q)
-                for prime in primes_found:
-                    if prime != p and prime + p == M:
-                        print(f"Found by min (cross-check): P={min(prime, p)}, Q={max(prime, p)} after {time.time() - start_time:.2f}s")
-                        return (min(prime, p), max(prime, p))
+                primes_by_thread['min'].append(p)
             if first:
                 p = 3
                 first = False
             else:
                 p += 2
-        return None
     
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = [
-            executor.submit(search_mid_down),
-            executor.submit(search_mid_up),
-            executor.submit(search_from_max),
-            executor.submit(search_from_min)
-        ]
+    def sum_mid(start_time):
+        while total_checks[0] < max_checks and time.time() - start_time < timeout and not result[0]:
+            mid_primes = primes_by_thread['mid_down'] + primes_by_thread['mid_up']
+            for i, p in enumerate(mid_primes):
+                for q in mid_primes[i+1:]:
+                    if p + q == M:
+                        result[0] = (p, q)
+                        print(f"Found by sum_mid: P={p}, Q={q} after {time.time() - start_time:.2f}s")
+                        return
+            time.sleep(0.1)  # Avoid busy-waiting
+    
+    def sum_boundaries(start_time):
+        while total_checks[0] < max_checks and time.time() - start_time < timeout and not result[0]:
+            boundary_primes = primes_by_thread['min'] + primes_by_thread['max']
+            mid_primes = primes_by_thread['mid_down'] + primes_by_thread['mid_up']
+            # Check within boundaries
+            for i, p in enumerate(boundary_primes):
+                for q in boundary_primes[i+1:]:
+                    if p + q == M:
+                        result[0] = (p, q)
+                        print(f"Found by sum_boundaries (internal): P={p}, Q={q} after {time.time() - start_time:.2f}s")
+                        return
+                # Check boundaries with mid
+                for q in mid_primes:
+                    if p + q == M:
+                        result[0] = (p, q)
+                        print(f"Found by sum_boundaries (cross-mid): P={p}, Q={q} after {time.time() - start_time:.2f}s")
+                        return
+            time.sleep(0.1)  # Avoid busy-waiting
+    
+    start_time = time.time()
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {
+            'mid_down': executor.submit(search_mid_down),
+            'mid_up': executor.submit(search_mid_up),
+            'max': executor.submit(search_from_max),
+            'min': executor.submit(search_from_min),
+            'sum_mid': executor.submit(sum_mid, start_time),
+            'sum_boundaries': executor.submit(sum_boundaries, start_time)
+        }
         
-        while time.time() - start_time < timeout:
+        while time.time() - start_time < timeout and not result[0]:
             done, not_done = concurrent.futures.wait(
-                futures,
+                futures.values(),
                 timeout=1.0,
-                return_when=concurrent.futures.FIRST_COMPLETED
+                return_when=concurrent.futures.ALL_COMPLETED
             )
-            for future in done:
-                result = future.result()
-                if result:
-                    for f in not_done:
-                        f.cancel()
-                    return result, checks_counter[0]
-            if not not_done:
+            if result[0]:  # Result found by summation threads
                 break
+        
+        # Cancel any remaining futures
+        for name, f in futures.items():
+            f.cancel()
     
-    return None, checks_counter[0]
+    # Print thread stats
+    for thread_name in checks_by_thread:
+        print(f"{thread_name}: {checks_by_thread[thread_name]:,} numbers reviewed, {len(primes_by_thread[thread_name]):,} primes found")
+    total_primes = sum(len(primes) for primes in primes_by_thread.values())
+    print(f"Total primes stored: {total_primes:,}")
+    
+    if result[0]:
+        p, q = result[0]
+        print(f"Encontrado: P = {p:,}, Q = {q:,}")
+        print(f"Verificación: {p} + {q} = {p + q:,}")
+        print(f"Números revisados (total): {total_checks[0]:,}")
+    else:
+        print("No se encontraron primos P y Q tales que P + Q = M en el tiempo límite.")
+        print(f"Números revisados (total): {total_checks[0]:,}")
+    
+    print(f"Tiempo de ejecución: {time.time() - start_time:.2f} segundos")
 
 # Test with 10^1000
 M = 10**1000
 print(f"Procesando M = {M:,}")
-
-start_time = time.time()
-resultado, checks = encontrar_pq_optimo_boundary(M, timeout=1200, max_checks=100000000)
-end_time = time.time()
-
-if resultado is not None:
-    p, q = resultado
-    print(f"Encontrado: P = {p:,}, Q = {q:,}")
-    print(f"Verificación: {p} + {q} = {p + q:,}")
-    print(f"Números revisados: {checks:,}")
-else:
-    print("No se encontraron primos P y Q tales que P + Q = M en el tiempo límite.")
-    print(f"Números revisados: {checks:,}")
-
-print(f"Tiempo de ejecución: {end_time - start_time:.2f} segundos")
+encontrar_pq_optimo_boundary(M, timeout=1200, max_checks=100000000)
