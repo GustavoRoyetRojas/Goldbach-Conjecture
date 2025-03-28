@@ -1,0 +1,87 @@
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+def miller_rabin(n, k=20):
+    """Prueba probabilística de primalidad de Miller-Rabin con k rondas."""
+    if n < 2:
+        return False
+    for p in [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37]:
+        if n % p == 0:
+            return n == p
+    d = n - 1
+    s = 0
+    while d % 2 == 0:
+        d //= 2
+        s += 1
+    for _ in range(k):
+        a = 2 + (n - 3) if n > 4 else 2
+        x = pow(a, d, n)
+        if x == 1 or x == n - 1:
+            continue
+        for __ in range(s - 1):
+            x = pow(x, 2, n)
+            if x == n - 1:
+                break
+        else:
+            return False
+    return True
+
+def encontrar_pq_optimo(M):
+    """Encuentra primos P y Q cercanos a M/2 tales que P + Q = M."""
+    if M % 2 != 0 or M <= 2:
+        raise ValueError("M debe ser par y mayor que 2")
+    
+    mid = M // 2
+    
+    # Búsqueda paralela de P y Q
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        # Buscar P hacia abajo desde mid (saltando pares)
+        def buscar_p():
+            offset = 0
+            while True:
+                p = mid - offset
+                if p < 2:
+                    return None
+                if miller_rabin(p, k=20):
+                    return p
+                offset += 2  # Saltar pares
+        
+        # Buscar Q hacia arriba desde mid (saltando pares)
+        def buscar_q():
+            offset = 0
+            while True:
+                q = mid + offset
+                if q >= M:
+                    return None
+                if miller_rabin(q, k=20):
+                    return q
+                offset += 2  # Saltar pares
+        
+        # Ejecutar búsquedas en paralelo
+        future_p = executor.submit(buscar_p)
+        future_q = executor.submit(buscar_q)
+        
+        # Obtener resultados
+        p = future_p.result()
+        q = future_q.result()
+    
+    # Verificar si P + Q = M
+    if p is not None and q is not None and p + q == M:
+        return (p, q)
+    else:
+        return None
+
+# Número 1 billón de veces mayor que el rango de Oliveira e Silva
+M = 4 * 10**30  # 4 seguido de 30 ceros
+print(f"Procesando M = {M:,}")
+
+start_time = time.time()
+resultado = encontrar_pq_optimo(M)
+end_time = time.time()
+
+if resultado:
+    print(f"Encontrado: P = {resultado[0]:,}, Q = {resultado[1]:,}")
+else:
+    print("No se encontraron primos P y Q tales que P + Q = M.")
+
+print(f"Tiempo de ejecución: {end_time - start_time:.2f} segundos")
