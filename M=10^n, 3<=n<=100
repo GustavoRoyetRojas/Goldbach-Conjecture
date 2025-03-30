@@ -1,0 +1,137 @@
+# =================== CONFIGURACIÓN ===================
+ARCHIVO_PRIMOS = "primos.txt"
+ARCHIVO_CSV = "resultados_goldbach.csv"
+ARCHIVO_LOG = "goldbach_errors.log"
+TIEMPO_MAX_ITERACION_MS = 30000  # 30 segundos por M
+VERSION = "1.003"  # ¡Nueva versión con PrimeFac!
+POTENCIA_INICIAL = 3
+POTENCIA_FINAL = 100  # Hasta Googol (10^100)
+# =====================================================
+
+# Nuevas importaciones
+import time
+import csv
+import logging
+from primefac import isprime
+from gmpy2 import mpz
+from datetime import datetime
+
+
+# Configurar logging
+logging.basicConfig(
+    filename=ARCHIVO_LOG,
+    level=logging.WARNING,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+def cargar_primos(archivo: str) -> list:
+    """Carga primos desde archivo, verificando cada uno con PrimeFac."""
+    primos = []
+    try:
+        with open(archivo, 'r') as f:
+            for linea in f:
+                numero = linea.strip()
+                if numero.isdigit():
+                    p = mpz(numero)
+                    if verificar_primalidad(p):
+                        primos.append(p)
+                    else:
+                        logging.warning(f"¡{p} no es primo! Eliminado de la lista.")
+        print(f"✅ Primos cargados: {len(primos)} desde {archivo}")
+        return primos
+    except FileNotFoundError:
+        logging.critical(f"Archivo {archivo} no encontrado.")
+        exit()
+
+def verificar_primalidad(n: mpz) -> bool:
+    """Verificación usando PrimeFac (determinista hasta 2^64 y probabilístico después)"""
+    return isprime(int(n))  # Convertir mpz a int para compatibilidad
+
+def encontrar_pares(M: mpz, primos: list) -> tuple:
+    """Busca pares (P, Q) con tiempo límite y logging de errores."""
+    tiempo_inicio = time.perf_counter()
+    iteraciones = 0
+    P, Q = None, None
+    error_msg = None
+
+    try:
+        for p in primos:
+            iteraciones += 1
+            q = M - p
+            if q < 2:
+                break
+
+            if verificar_primalidad(q):
+                P = int(p)
+                Q = str(q)
+                break
+
+            if (time.perf_counter() - tiempo_inicio) * 1000 > TIEMPO_MAX_ITERACION_MS:
+                raise TimeoutError()
+
+        if P is None:
+            raise ValueError("No se encontró par válido.")
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {str(e)}"
+        logging.error(f"M={M} - {error_msg}")
+
+    tiempo_ms = (time.perf_counter() - tiempo_inicio) * 1000
+    return P, Q, iteraciones, tiempo_ms, error_msg
+
+def ejecutar():
+    """Bucle principal desde 10^3 hasta 10^100."""
+    resultados = []
+    primos = cargar_primos(ARCHIVO_PRIMOS)
+
+    print("\n=== Inicio de Ejecución ===")
+    print(f"Rango: 10^{POTENCIA_INICIAL} hasta 10^{POTENCIA_FINAL}")
+    print(f"Configuración: PrimeFac integrado | Máx. {TIEMPO_MAX_ITERACION_MS} ms/iteración\n")  # ¡Corregido!
+
+    for exponente in range(POTENCIA_INICIAL, POTENCIA_FINAL + 1):
+        M = mpz(10)**mpz(exponente)
+        log10_M = float(exponente)
+
+        try:
+            if M % 2 != 0 or M < 4:
+                raise ValueError("M debe ser par y ≥4")
+
+            P, Q, iteraciones, tiempo_ms, error = encontrar_pares(M, primos)
+            validacion = "TRUE" if error is None else "FALSE"
+
+            resultados.append({
+                "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Versión": VERSION,
+                "M": f"10^{exponente}",
+                "P": P,
+                "Q": Q if Q else "N/A",
+                "Iteraciones": iteraciones,
+                "Tiempo (ms)": f"{tiempo_ms:.2f}",
+                "Log10(M)": log10_M,
+                "Validación": validacion,
+                "Error": error
+            })
+
+            print(f"M=10^{exponente}, Q: {Q}, Primalidad: {validacion} | Iter: {iteraciones} | T: {tiempo_ms:.2f} ms")
+
+        except Exception as e:
+            logging.critical(f"Error crítico en M=10^{exponente}: {str(e)}")
+
+    # Guardar CSV
+    with open(ARCHIVO_CSV, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            "Fecha", "Versión", "M", "P", "Q",
+            "Iteraciones", "Tiempo (ms)", "Log10(M)", "Validación", "Error"
+        ])
+        writer.writeheader()
+        writer.writerows(resultados)
+    print(f"\n✅ CSV generado: {ARCHIVO_CSV}")
+
+if __name__ == "__main__":
+    print("=" * 60)
+    print(f"Goldbach Conjecture Prover (v{VERSION} - PrimeFac Edition)")
+    print("=" * 60)
+    inicio = time.perf_counter()
+    ejecutar()
+    tiempo_total = (time.perf_counter() - inicio) * 1000
+    print(f"\n⏱️  Tiempo total: {tiempo_total:.2f} ms")
+    print("=" * 60)
