@@ -13,6 +13,7 @@ POTENCIA_INICIAL = 3
 POTENCIA_FINAL = 100
 
 
+
 # =====================================================
 
 def cargar_primos(archivo: str) -> list:
