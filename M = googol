@@ -1,51 +1,128 @@
 import gmpy2
 from gmpy2 import mpz
 import time
+from datetime import datetime
+import csv
+
+# =================== CONFIGURACIÓN ===================
+ARCHIVO_PRIMOS = "primos.txt"
+ARCHIVO_CSV = "resultados_goldbach.csv"
+TIEMPO_MAX_ITERACION_MS = 1000
+VERSION = "1.0021"
+POTENCIA_INICIAL = 3
+POTENCIA_FINAL = 100
 
 
-# Lista completa de primos pequeños (hasta 997)
-small_primes = [
-    3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79,
-    83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167,
-    173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257,
-    263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353,
-    359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431, 433, 439, 443, 449,
-    457, 461, 463, 467, 479, 487, 491, 499, 503, 509, 521, 523, 541, 547, 557, 563,
-    569, 571, 577, 587, 593, 599, 601, 607, 613, 617, 619, 631, 641, 643, 647, 653,
-    659, 661, 673, 677, 683, 691, 701, 709, 719, 727, 733, 739, 743, 751, 757, 761,
-    769, 773, 787, 797, 809, 811, 821, 823, 827, 829, 839, 853, 857, 859, 863, 877,
-    881, 883, 887, 907, 911, 919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997
-]
+# =====================================================
 
-def encontrar_pares_goldbach(M_str):
-    start_time = time.perf_counter()  # ¡Cambio clave aquí!
+def cargar_primos(archivo: str) -> list:
+    """Carga números primos desde un archivo de texto."""
+    primos = []
+    try:
+        with open(archivo, 'r') as f:
+            for linea in f:
+                numero = linea.strip()
+                if numero.isdigit():
+                    primos.append(mpz(int(numero)))
+    except FileNotFoundError:
+        print(f"Error: Archivo '{archivo}' no encontrado.")
+        exit()
+    return primos
+
+
+def evaluar_expresion(exponente: int) -> mpz:
+    """Genera M = 10^exponente de forma simbólica."""
+    return mpz(10) ** mpz(exponente)
+
+
+def encontrar_pares_goldbach(M: mpz, primos: list) -> tuple:
+    """Busca los primos P y Q que cumplen P + Q = M."""
+    tiempo_inicio = time.perf_counter()
     iteraciones = 0
+    error_msg = None
+    P, Q = None, None
 
-    M = mpz(M_str) if M_str.isdigit() else mpz(eval(M_str.replace('^', '**')))
+    try:
+        for P_candidato in primos:
+            if (time.perf_counter() - tiempo_inicio) * 1000 > TIEMPO_MAX_ITERACION_MS:
+                raise TimeoutError(f"Tiempo excedido en M=10^{int(gmpy2.log10(M))}")
 
-    for P in (mpz(p) for p in small_primes):
-        iteraciones += 1
-        Q = M - P
-        if Q < 2:
-            continue
-        if gmpy2.is_prime(Q):
-            end_time = time.perf_counter()
-            tiempo_ms = (end_time - start_time) * 1000  # milisegundos
-            return (int(P), int(Q)), iteraciones, tiempo_ms
+            iteraciones += 1
+            Q_candidato = M - P_candidato
+            if Q_candidato < 2:
+                break
 
-    end_time = time.perf_counter()
-    tiempo_ms = (end_time - start_time) * 1000
-    return None, iteraciones, tiempo_ms
+            if gmpy2.is_prime(Q_candidato):
+                P, Q = int(P_candidato), int(Q_candidato)
+                break
+
+        if P is None:
+            raise ValueError("Lista de primos insuficiente.")
+
+    except Exception as e:
+        error_msg = str(e)
+
+    tiempo_ejecucion = (time.perf_counter() - tiempo_inicio) * 1000
+    return P, Q, iteraciones, tiempo_ejecucion, error_msg
+
+
+def ejecutar_bucle_y_generar_csv():
+    """Ejecuta el bucle de pruebas y genera el CSV final."""
+    resultados = []
+    primos = cargar_primos(ARCHIVO_PRIMOS)
+
+    print("\nIniciando validación de la Conjetura de Goldbach...")
+    print(f"Rango: 10^{POTENCIA_INICIAL} (1,000) hasta 10^{POTENCIA_FINAL} (Googol)\n")
+
+    for exponente in range(POTENCIA_INICIAL, POTENCIA_FINAL + 1):
+        M = evaluar_expresion(exponente)
+        log10_M = float(exponente)
+
+        try:
+            if M % 2 != 0 or M < 4:
+                raise ValueError("M debe ser par y ≥4")
+
+            P, Q, iteraciones, tiempo_ms, error = encontrar_pares_goldbach(M, primos)
+            validacion = "TRUE" if error is None else "FALSE"
+
+            resultados.append({
+                "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "Versión": VERSION,
+                "M": f"10^{exponente}",
+                "P": P,
+                "Q": Q,
+                "Iteraciones": iteraciones,
+                "Tiempo (ms)": f"{tiempo_ms:.2f}",
+                "Log10(M)": log10_M,
+                "Validación": validacion,
+                "Error": error
+            })
+
+            print(f"M=10^{exponente}: {validacion} | Iteraciones: {iteraciones} | Tiempo: {tiempo_ms:.2f} ms")
+
+        except Exception as e:
+            print(f"Error crítico en M=10^{exponente}: {str(e)}")
+
+    # Generar CSV sin anotación de tipo redundante
+    with open(ARCHIVO_CSV, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=[
+            "Fecha", "Versión", "M", "P", "Q",
+            "Iteraciones", "Tiempo (ms)", "Log10(M)", "Validación", "Error"
+        ])
+        writer.writeheader()
+        writer.writerows(resultados)
+
+    print(f"\n✅ CSV generado: '{ARCHIVO_CSV}'")
 
 
 if __name__ == "__main__":
-    M_input = input("Ingrese M: ").strip()
-    resultado, iteraciones, tiempo = encontrar_pares_goldbach(M_input)
+    print("=" * 60)
+    print(f"Goldbach Conjecture Prover (Versión {VERSION})")
+    print("=" * 60)
 
-    if resultado:
-        print(f"\nPrimos encontrados: {resultado[0]} + {resultado[1]} = {sum(resultado)}")
-    else:
-        print("\nNo se encontró solución")
+    inicio_total = time.perf_counter()
+    ejecutar_bucle_y_generar_csv()
+    tiempo_total = (time.perf_counter() - inicio_total) * 1000
 
-    print(f"Iteraciones: {iteraciones}")
-    print(f"Tiempo real: {tiempo:.6f} ms")  # 6 decimales de precisión
+    print(f"\n⏱️  Tiempo total de ejecución: {tiempo_total:.2f} ms")
+    print("=" * 60)
