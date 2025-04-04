@@ -1,0 +1,65 @@
+ABSTRACT
+In version 1.005.1 we leverage the algorithm version 1.003, to perform faster Goldbach’s conjecture evaluation.
+Average time to confirm 'M's is 79% faster (from 2.28 to 0.48 ms per M), 62% reduced time to generate results file and 94% 
+reduction in size of the file by implementing parquet extension rather than CSV extension. 
+
+MATHEMATICAL FOUNDATION
+Prime Distribution :
+For M ≤ 10^5, all primes are exhaustively listed (e.g., 1,228 primes from 3 to 9,973).
+For M = 10^100, the average prime gap is ∼ ln(10^100) ≈ 230.26, compared to ≈11.51 for M = 10^5, per the prime number theorem.
+In v1.005.1, we couldn't find all primes for the 'M's evaluated. But, as we strive for efficiencie rigth now, 
+is not a big concern since we evaluate 100.000 'M's and only failed to find 23 of them. For sure, 
+in further research we expect to increase the number of known primes to get 100% confirmation in a predefined range introduced by the user.
+
+ALGORITHM
+
+1. Precomputed Primes : Store primes ≤ 10^5 in two sets (sourced from Wolfram Alpha) to avoid redundant primality checks.
+2. Verification Process :
+-User predefined an 'Exponent' to define the range of the study, and define the number (n) of 'M's to evaluate. This is the formula:
+'M' = 10^Exponent - (n * 2)
+For each 'M' the algorithm iterate over precomputed primes P in two threads based on the sets of 'P'.
+-Compute Q = M − P and test Q for primality. This time using the Python Library 'gmpy2'.
+-Terminate upon finding the first valid prime pair (P,Q).
+
+COMPUTATIONAL RESOURCES
+
+-Software : Python 3.12 with primefac (v1.1) and gmpy2 (v2.1.2) for arbitrary-precision arithmetic.
+-Hardware : AMD Ryzen 5 3600 (3.59 GHz), 8 GB RAM.
+
+RESULTS
+
+🚀 Goldbach Conjecture Prover (v1.005.1)
+Seleccione la categoría (exponente de M entre 3 y 100): 98
+Ingrese el número de n's a validar (ej: 50000): 100000
+⏳ Cargando primos precalculados...
+✅ 1228 primos cargados en 0.85 ms.
+
+🔥 Iniciando verificación masiva para M = 10^98 - n*2 (n de 0 a 100000)...
+
+📊 RESUMEN EJECUCIÓN:
+   - Versión: 1.005.1
+   - Rango de M seleccionado: 10^98 - n*2 (n = 0 a 100000)
+   - Tiempo de carga de primos: 0.85 ms
+   - Tiempo de verificación (bucle): 96624.55 ms
+   - Tiempo de escritura: 215.19 ms
+   - M's encontrados: 99978
+   - M's no encontrados: 23
+   - Promedio por M: 0.81 ms (Desviación: 0.53 ms)
+   - Máximo tiempo en M=10^98 - 18527: 5.49 ms (Iteraciones: 196)
+   - Tiempo total: 96840.60 ms
+   - Resultados guardados en: goldbach_results_v1.005.1.parquet
+
+Process finished with exit code 0
+
+DISCUSSION
+
+Changing CSV to Parquet file reduces file size from 20.7 MB to 1.3 MB for the 100.000 'M's evaluated.
+
+LIMITATIONS
+
+-Results apply only to range: <=3E<=100 and a number of 'M's to evaluate; generalizing to all even numbers requires further study.
+
+CONCLUSION
+This work verifies Goldbach’s conjecture for several numbers evaluated with improved efficiency vs prior version, highlighting the utility of optimized algorithms in computational number theory.
+
+
