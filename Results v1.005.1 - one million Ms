@@ -1,0 +1,53 @@
+Results - v1.005.1 for one million 'M's in the region 10^10:
+
+🚀 Goldbach Conjecture Prover (v1.005.1)
+Seleccione la categoría (exponente de M entre 10 y 100): 10
+Ingrese el número de n's a validar (ej: 50000): 1000000
+⏳ Cargando primos precalculados...
+✅ 1228 primos cargados en 0.80 ms.
+
+🔥 Iniciando verificación masiva para M = 10^10 - n*2 (n de 0 a 1000000)...
+
+📊 RESUMEN EJECUCIÓN:
+   - Versión: 1.005.1
+   - Rango de M seleccionado: 10^10 - n*2 (n = 0 a 1000000)
+   - Tiempo de carga de primos: 0.80 ms
+   - Tiempo de verificación (bucle): 243895.68 ms
+   - Tiempo de escritura: 1767.50 ms
+   - M's encontrados: 1000001
+   - M's no encontrados: 0
+   - Promedio por M: 0.12 ms (Desviación: 0.05 ms)
+   - Máximo tiempo en M=10^10 - 393141: 32.87 ms (Iteraciones: 9)
+   - Tiempo total: 245663.97 ms
+   - Resultados guardados en: goldbach_results_v1.005.1.parquet
+
+Process finished with exit code 0
+v1.005.1. file size: 8,7 MB.
+
+Results - v1.005.1 for one million 'M's in the region 10^90:
+
+🚀 Goldbach Conjecture Prover (v1.005.1)
+Seleccione la categoría (exponente de M entre 10 y 100): 90
+Ingrese el número de n's a validar (ej: 50000): 1000000
+⏳ Cargando primos precalculados...
+✅ 1228 primos cargados en 0.80 ms.
+
+🔥 Iniciando verificación masiva para M = 10^90 - n*2 (n de 0 a 1000000)...
+
+📊 RESUMEN EJECUCIÓN:
+   - Versión: 1.005.1
+   - Rango de M seleccionado: 10^90 - n*2 (n = 0 a 1000000)
+   - Tiempo de carga de primos: 0.80 ms
+   - Tiempo de verificación (bucle): 726358.25 ms
+   - Tiempo de escritura: 3185.50 ms
+   - M's encontrados: 999901
+   - M's no encontrados: 100
+   - Promedio por M: 0.59 ms (Desviación: 0.37 ms)
+   - Máximo tiempo en M=10^90 - 393132: 32.67 ms (Iteraciones: 61)
+   - Tiempo total: 729544.55 ms
+   - Resultados guardados en: goldbach_results_v1.005.1.parquet
+
+Process finished with exit code 0
+v1.005.1. file size: 13,0 MB.
+
+
