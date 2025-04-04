@@ -103,10 +103,10 @@ if __name__ == '__main__':
         while True:
             try:
                 exp = int(input("Seleccione la categoría (exponente de M entre 3 y 100): "))
-                if 3 <= exp <= 100:
+                if 10 <= exp <= 100:
                     break
                 else:
-                    print("⚠️ El exponente debe estar entre 3 y 100.")
+                    print("⚠️ El exponente debe estar entre 10 y 100.")
             except ValueError:
                 print("⚠️ Ingrese un número entero válido.")
 
