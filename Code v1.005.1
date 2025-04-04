@@ -1,0 +1,172 @@
+# -*- coding: utf-8 -*-
+import time
+import numpy as np
+import gmpy2
+import threading
+import pandas as pd
+import bisect
+
+PRIMES_SET1 = 'primes_10^5 - set1.txt'
+PRIMES_SET2 = 'primes_10^5 - set2.txt'
+CSV_OUTPUT = 'goldbach_results_v1.005.1.parquet'
+VERSION = "1.005.1"
+
+def load_primes(filename):
+    primes = []
+    with open(filename, 'r') as f:
+        for line in f:
+            try:
+                prime = int(line.strip())
+                primes.append(prime)
+            except ValueError:
+                print(f"⚠️ Ignorando línea inválida en {filename}: {line.strip()}")
+    return primes
+
+def log_result(buffer, M, p, q, iteration, elapsed_time, error):
+    buffer.append({
+        'M': str(M),  # ✅ M como cadena
+        'P': p,
+        'Q': str(q),  # ✅ Q como cadena
+        'Q iterations': iteration,
+        'Q time (ms)': f"{elapsed_time:.2f}",
+        'Error': error
+    })
+
+def verify_goldbach(primes_set1, primes_set2, exponent, num_n):
+    loop_start = time.perf_counter()
+    time_records = []
+    buffer = []
+
+    for n in range(0, num_n + 1):
+        M = 10**exponent - (n * 2)
+        start_time = time.perf_counter()
+        found_flag = threading.Event()
+        result = {'p': None, 'q': None, 'iteration': 0, 'elapsed': 0, 'error': ''}
+        lock = threading.Lock()
+
+        max_p = M // 2
+        index1 = bisect.bisect_right(primes_set1, max_p)
+        index2 = bisect.bisect_right(primes_set2, max_p)
+
+        def process_primes(primes, set_number, max_index):
+            try:
+                for idx, p in enumerate(primes[:max_index], 1):
+                    if found_flag.is_set():
+                        break
+                    q = M - p
+                    if q < 2:
+                        continue
+                    if gmpy2.is_prime(q):
+                        elapsed = (time.perf_counter() - start_time) * 1000
+                        with lock:
+                            if not found_flag.is_set():
+                                result.update({
+                                    'p': p,
+                                    'q': q,
+                                    'iteration': idx,
+                                    'elapsed': elapsed,
+                                    'error': ''
+                                })
+                                found_flag.set()
+                        break
+                    else:
+                        continue
+            except Exception as e:
+                print(f"❌ Error en hilo {set_number}: {str(e)}")
+
+        # Ejecución paralela con límites de búsqueda optimizados
+        thread1 = threading.Thread(target=process_primes, args=(primes_set1, 1, index1))
+        thread2 = threading.Thread(target=process_primes, args=(primes_set2, 2, index2))
+        thread1.start()
+        thread2.start()
+        thread1.join()
+        thread2.join()
+
+        # Registros de resultados
+        if result['p'] is not None:
+            log_result(buffer, M, result['p'], result['q'], result['iteration'], result['elapsed'], result['error'])
+            time_records.append((n, result['elapsed'], result['iteration']))
+        else:
+            elapsed_total = (time.perf_counter() - start_time) * 1000
+            total_iterations = index1 + index2
+            log_result(buffer, M, 0, 0, total_iterations, elapsed_total, "No se encontró par para M")
+            time_records.append((n, elapsed_total, total_iterations))
+
+    loop_time = (time.perf_counter() - loop_start) * 1000
+    return loop_time, buffer, time_records
+
+if __name__ == '__main__':
+    try:
+        print(f"🚀 Goldbach Conjecture Prover (v{VERSION})")
+
+        # Configuración de parámetros
+        while True:
+            try:
+                exp = int(input("Seleccione la categoría (exponente de M entre 3 y 100): "))
+                if 3 <= exp <= 100:
+                    break
+                else:
+                    print("⚠️ El exponente debe estar entre 3 y 100.")
+            except ValueError:
+                print("⚠️ Ingrese un número entero válido.")
+
+        while True:
+            try:
+                num_n = int(input("Ingrese el número de n's a validar (ej: 50000): "))
+                if num_n >= 1:
+                    break
+                else:
+                    print("⚠️ El número de n's debe ser al menos 1.")
+            except ValueError:
+                print("⚠️ Ingrese un número entero válido.")
+
+        # Carga de primos
+        start_load = time.perf_counter()
+        primes_set1 = load_primes(PRIMES_SET1)
+        primes_set2 = load_primes(PRIMES_SET2)
+        load_time = (time.perf_counter() - start_load) * 1000
+        print(f"⏳ Cargando primos precalculados...")
+        print(f"✅ {len(primes_set1) + len(primes_set2)} primos cargados en {load_time:.2f} ms.")
+
+        # Ejecución de verificación
+        print(f"\n🔥 Iniciando verificación masiva para M = 10^{exp} - n*2 (n de 0 a {num_n})...")
+        loop_time, buffer, time_records = verify_goldbach(primes_set1, primes_set2, exp, num_n)
+
+        # Escritura de resultados en formato Parquet
+        csv_start = time.perf_counter()
+        df = pd.DataFrame(buffer)
+        df.to_parquet(CSV_OUTPUT, index=False)
+        csv_time = (time.perf_counter() - csv_start) * 1000
+
+        # Cálculo de métricas
+        times = [record[1] for record in time_records]
+        avg_time = np.mean(times) if times else 0
+        std_dev = np.std(times) if times else 0
+        max_time_record = max(time_records, key=lambda x: x[1]) if time_records else (0, 0, 0)
+        total_time = load_time + loop_time + csv_time
+
+        # Conteo de resultados
+        found = 0
+        not_found = 0
+        for row in buffer:
+            if row['Error'] == '':
+                found += 1
+            elif row['Error'] == "No se encontró par para M":
+                not_found += 1
+
+        # Reporte final
+        print(f"\n📊 RESUMEN EJECUCIÓN:")
+        print(f"   - Versión: {VERSION}")
+        print(f"   - Rango de M seleccionado: 10^{exp} - n*2 (n = 0 a {num_n})")
+        print(f"   - Tiempo de carga de primos: {load_time:.2f} ms")
+        print(f"   - Tiempo de verificación (bucle): {loop_time:.2f} ms")
+        print(f"   - Tiempo de escritura: {csv_time:.2f} ms")
+        print(f"   - M's encontrados: {found}")
+        print(f"   - M's no encontrados: {not_found}")
+        print(f"   - Promedio por M: {avg_time:.2f} ms (Desviación: {std_dev:.2f} ms)")
+        print(f"   - Máximo tiempo en M=10^{exp} - {max_time_record[0]}: {max_time_record[1]:.2f} ms (Iteraciones: {max_time_record[2]})")
+        print(f"   - Tiempo total: {total_time:.2f} ms")
+        print(f"   - Resultados guardados en: {CSV_OUTPUT}")
+
+    except Exception as e:
+        print(f"❌ Error crítico: {str(e)}")
