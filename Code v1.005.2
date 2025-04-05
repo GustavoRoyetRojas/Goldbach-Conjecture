@@ -1,0 +1,157 @@
+# -*- coding: utf-8 -*-
+import time
+import numpy as np
+import gmpy2
+import threading
+import pandas as pd
+import bisect
+
+PRIMES_SET1 = 'primes_10^5 - set1.txt'
+PRIMES_SET2 = 'primes_10^5 - set2.txt'
+CSV_OUTPUT = 'goldbach_results_v1.005.2. parquet'
+VERSION = "1.005.2"  # Parquet
+
+def load_primes(filename):
+    primes = []
+    with open(filename, 'r') as f:
+        for line in f:
+            try:
+                prime = int(line.strip())
+                primes.append(prime)
+            except ValueError:
+                print(f"⚠️ Ignoring invalid line in {filename}: {line.strip()}")
+    return primes
+
+def log_result(buffer, M, p, q, iteration, elapsed_time, error):
+    buffer.append({
+        'M': str(M),
+        'P': p,
+        'Q': str(q),
+        'Q iterations': iteration,
+        'Q time (ms)': f"{elapsed_time:.2f}",
+        'Error': error
+    })
+
+def verify_goldbach(primes_set1, primes_set2, exponent, num_n):
+    loop_start = time.perf_counter()
+    time_records = []
+    buffer = []
+
+    for n in range(0, num_n + 1):
+        M = 10**exponent - (n * 2)
+        start_time = time.perf_counter()
+        found_flag = threading.Event()
+        result = {'p': None, 'q': None, 'iteration': 0, 'elapsed': 0, 'error': ''}
+        lock = threading.Lock()
+
+        max_p = M // 2
+        index1 = bisect.bisect_right(primes_set1, max_p)
+        index2 = bisect.bisect_right(primes_set2, max_p)
+
+        def process_primes(primes, set_number, max_index):
+            try:
+                for idx, p in enumerate(primes[:max_index], 1):
+                    if found_flag.is_set():
+                        break
+                    q = M - p
+                    if q < 2:
+                        continue
+                    if gmpy2.is_prime(q):
+                        elapsed = (time.perf_counter() - start_time) * 1000
+                        with lock:
+                            if not found_flag.is_set():
+                                result.update({
+                                    'p': p,
+                                    'q': q,
+                                    'iteration': idx,
+                                    'elapsed': elapsed,
+                                    'error': ''
+                                })
+                                found_flag.set()
+                        break
+                    else:
+                        continue
+            except Exception as e:
+                print(f"❌ Error in thread {set_number}: {str(e)}")
+
+        thread1 = threading.Thread(target=process_primes, args=(primes_set1, 1, index1))
+        thread2 = threading.Thread(target=process_primes, args=(primes_set2, 2, index2))
+        thread1.start()
+        thread2.start()
+        thread1.join()
+        thread2.join()
+
+        if result['p'] is not None:
+            log_result(buffer, M, result['p'], result['q'], result['iteration'], result['elapsed'], result['error'])
+            time_records.append((n, result['elapsed'], result['iteration']))
+        else:
+            elapsed_total = (time.perf_counter() - start_time) * 1000
+            total_iterations = index1 + index2
+            log_result(buffer, M, 0, 0, total_iterations, elapsed_total, "No pair found for M")
+            time_records.append((n, elapsed_total, total_iterations))
+
+    loop_time = (time.perf_counter() - loop_start) * 1000
+    return loop_time, buffer, time_records
+
+if __name__ == '__main__':
+    try:
+        print(f"🚀 Goldbach Conjecture Prover (v{VERSION})")
+
+        while True:
+            try:
+                exp = int(input("Select exponent (10-100): "))
+                if 10 <= exp <= 100:
+                    break
+                else:
+                    print("⚠️ Exponent must be between 10 and 100.")
+            except ValueError:
+                print("⚠️ Please enter a valid integer.")
+
+        while True:
+            try:
+                num_n = int(input("Enter number of n's to validate: "))
+                if num_n >= 1:
+                    break
+                else:
+                    print("⚠️ Number of n's must be at least 1.")
+            except ValueError:
+                print("⚠️ Please enter a valid integer.")
+
+        start_load = time.perf_counter()
+        primes_set1 = load_primes(PRIMES_SET1)
+        primes_set2 = load_primes(PRIMES_SET2)
+        load_time = (time.perf_counter() - start_load) * 1000
+        print(f"⏳ Loaded {len(primes_set1) + len(primes_set2)} primes in {load_time:.2f} ms.")
+
+        print(f"\n🔥 Starting verification for M = 10^{exp} - n*2 (n=0 to {num_n})...")
+        loop_time, buffer, time_records = verify_goldbach(primes_set1, primes_set2, exp, num_n)
+
+        csv_start = time.perf_counter()
+        df = pd.DataFrame(buffer)
+        df.to_parquet(CSV_OUTPUT, index=False)
+        csv_time = (time.perf_counter() - csv_start) * 1000
+
+        times = [record[1] for record in time_records]
+        avg_time = np.mean(times) if times else 0.0
+        std_dev = np.std(times) if times else 0.0
+        max_time_record = max(time_records, key=lambda x: x[1]) if time_records else (0, 0.0, 0)
+        total_time = load_time + loop_time + csv_time
+
+        found = sum(1 for row in buffer if row['Error'] == '')
+        not_found = sum(1 for row in buffer if row['Error'] == "No pair found for M")
+
+        print(f"\n📊 EXECUTION SUMMARY:")
+        print(f"   - Version: {VERSION}")
+        print(f"   - M range: 10^{exp} - n*2 (n=0 to {num_n})")
+        print(f"   - Prime load time: {load_time:.2f} ms")
+        print(f"   - Verification time: {loop_time:.2f} ms")
+        print(f"   - Write time: {csv_time:.2f} ms")
+        print(f"   - Ms found: {found}")
+        print(f"   - Ms not found: {not_found}")
+        print(f"   - Average per M: {avg_time:.2f} ms (σ: {std_dev:.2f} ms)")
+        print(f"   - Max time at M=10^{exp}-{max_time_record[0]}: {max_time_record[1]:.2f} ms (Iterations: {max_time_record[2]})")
+        print(f"   - Total time: {total_time:.2f} ms")
+        print(f"   - Results saved to: {CSV_OUTPUT}")
+
+    except Exception as e:
+        print(f"❌ Critical error: {str(e)}")
