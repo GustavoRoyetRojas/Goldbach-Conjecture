@@ -1,0 +1,23 @@
+Fantastic results for M = 10^50 - n*2 (n = 0 a 1000000).
+
+🚀 Goldbach Conjecture Prover (v1.005.4)
+Seleccione la categoría (exponente de M entre 10 y 100): 50
+Ingrese el número de n's a validar (ej: 50000): 1000000
+⏳ Cargando primos precalculados...
+✅ 1228 primos cargados en 0.77 ms.
+
+🔥 Iniciando verificación masiva para M = 10^50 - n*2 (n de 0 a 1000000)...
+
+📊 RESUMEN EJECUCIÓN:
+   - Versión: 1.005.4
+   - Rango de M seleccionado: 10^50 - n*2 (n = 0 a 1000000)
+   - Tiempo de carga de primos: 0.77 ms
+   - Tiempo de verificación (bucle): 87387.56 ms
+   - Tiempo de escritura: 1590.25 ms
+   - M's encontrados: 1000001
+   - M's no encontrados: 0
+   - Promedio por M: 0.70 ms (Desviación: 0.38 ms)
+   - Máximo tiempo en M=10^50 - 2*866229: 9.22 ms (Iteraciones: 23)
+   - Tiempo total: 88978.57 ms
+   - Resultados guardados en: goldbach_results_v1.005.4. parquet + multiprocessing
+Process finished with exit code 0
